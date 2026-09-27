@@ -75,6 +75,22 @@
 
 <body>
 
+    <!-- Toast Notification Mengambang di Pojok Kanan Atas -->
+    <?php $toast = $this->session->flashdata('toast'); ?>
+    <?php if ($toast): ?>
+        <div aria-live="polite" aria-atomic="true" class="position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+            <div class="toast show align-items-center text-white bg-<?= ($toast['type'] == 'success') ? 'success' : 'danger'; ?> border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body fw-semibold py-3">
+                        <i class="fa fa-<?= ($toast['type'] == 'success') ? 'check-circle' : 'exclamation-circle'; ?> me-2"></i>
+                        <?= $toast['message']; ?>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- Top / Header Section -->
     <div class="container py-4">
         <div class="row align-items-center justify-content-center text-center">
@@ -104,15 +120,10 @@
                     <div class="col-md-6 p-4 p-lg-5 bg-white">
                         <h3 class="fw-bold text-center mb-4 text-dark" style="font-size: 24px;">Masuk</h3>
 
-                        <!-- Notifikasi Pesan Error/Flashdata -->
-                        <?php if ($this->session->flashdata('message')): ?>
-                            <?= $this->session->flashdata('message'); ?>
-                        <?php endif; ?>
-
                         <form action="<?= base_url('auth/proses_login'); ?>" method="post">
                             <div class="mb-3">
                                 <label class="form-label text-muted small fw-semibold">Email / Username</label>
-                                <input type="text" name="username" class="form-control rounded-2" placeholder="dapo.smkgrisa@gmail.com" required autocomplete="off">
+                                <input type="text" name="username" class="form-control rounded-2" placeholder="smkgrisa@gmail.com" required autocomplete="off">
                             </div>
 
                             <div class="mb-3">
@@ -139,7 +150,7 @@
                         </form>
                     </div>
 
-                    <!-- KANAN: Panel Sambutan (Diperbaiki dengan pembungkus kolom col-md-6 right-panel) -->
+                    <!-- KANAN: Panel Sambutan -->
                     <div class="col-md-6 right-panel p-4 p-lg-5 d-flex flex-column justify-content-center align-items-center text-center">
                         <div class="mb-3">
                             <img src="<?= base_url('assets/img/logo.jpg'); ?>" alt="Logo Sekolah" style="width: 70px; height: 70px; object-fit: contain;" class="drop-shadow">
@@ -178,6 +189,8 @@
             this.textContent = type === 'password' ? 'TAMPIL' : 'SEMBUNYI';
         });
     </script>
+
+
 </body>
 
 </html>

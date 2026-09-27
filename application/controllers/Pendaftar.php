@@ -230,71 +230,187 @@ class Pendaftar extends MY_Controller
         $this->load->view('layout/footer');
     }
     // Hanya ada SATU fungsi update di sini
+    // Fungsi Update Terpusat (Menangani Admin & Bendahara)
     public function update()
     {
-        // === PENGAMAN: JIKA ROLE-NYA SEKRETARIS, TOLAK PERUBAHAN PEMBAYARAN / DATA ===
-        if ($this->session->userdata('role') == 'Sekretaris') {
-            $this->session->set_flashdata('toast', [
-                'type' => 'error',
-                'message' => 'Akses ditolak! Sekretaris hanya memiliki hak akses untuk melihat data.'
-            ]);
-            // Ambil id_pendaftar dari post untuk redirect kembali ke halaman edit
-            $id_pendaftar = $this->input->post('id_pendaftar', true);
-            redirect('pendaftar/edit/' . $id_pendaftar);
-            return;
-        }
+        $id = $this->input->post('id_pendaftar', true);
+
+        // Ambil session role dan ubah ke huruf kecil semua untuk menghindari typo
+        $session_role = $this->session->userdata('role') ?: $this->session->userdata('peran');
+        $role = strtolower(trim($session_role));
+
         // =========================================================================
+        // 1. JIKA PERANNYA BENDAHARA (Hanya update Pembayaran & Syarat, TIDAK ADA update biodata)
+        // =========================================================================
+        if ($role == 'bendahara') {
+            // Ambil & Bersihkan Nominal Pembayaran Registrasi
+            $nominal_reg = str_replace(['Rp', '.', ' '], '', $this->input->post('nominal_reg'));
+            if (empty($nominal_reg) || $nominal_reg == 0) {
+                $nom_reg_fix = 0;
+                $tgl_reg_fix = NULL;
+                $jam_reg_fix = '00:00:00';
+            } else {
+                $nom_reg_fix = $nominal_reg;
+                $tgl_reg_fix = $this->input->post('tgl_reg') ?: NULL;
+                $jam_input   = $this->input->post('jam_reg');
+                $jam_reg_fix = (!empty($jam_input) && $jam_input != '00:00') ? date('H:i:s', strtotime($jam_input)) : date('H:i:s');
+            }
 
-        $id  = $this->input->post('id_pendaftar', true);
+            // Ambil & Bersihkan Nominal Daftar Ulang
+            $nominal_du = str_replace(['Rp', '.', ' '], '', $this->input->post('nominal_du'));
+            if (empty($nominal_du) || $nominal_du == 0) {
+                $nom_du_fix = 0;
+                $tgl_du_fix = NULL;
+                $jam_du_fix = '00:00:00';
+            } else {
+                $nom_du_fix = $nominal_du;
+                $tgl_du_fix = $this->input->post('tgl_du') ?: NULL;
+                $jam_input   = $this->input->post('jam_du');
+                $jam_du_fix = (!empty($jam_input) && $jam_input != '00:00') ? date('H:i:s', strtotime($jam_input)) : date('H:i:s');
+            }
+
+            // Simpan / Update Data Pembayaran
+            $pembayaran_data = [
+                'nominal_reg'  => $nom_reg_fix,
+                'tgl_reg'      => $tgl_reg_fix,
+                'jam_reg'      => $jam_reg_fix,
+                'id_gelombang' => $this->input->post('id_gelombang') ?: NULL,
+                'nominal_du'   => $nom_du_fix,
+                'tgl_du'       => $tgl_du_fix,
+                'jam_du'       => $jam_du_fix,
+            ];
+
+            $cek_bayar = $this->db->get_where('pembayaran_pendaftar', ['id_pendaftar' => $id])->row();
+            if ($cek_bayar) {
+                $this->db->where('id_pendaftar', $id);
+                $this->db->update('pembayaran_pendaftar', $pembayaran_data);
+            } else {
+                $pembayaran_data['id_pendaftar'] = $id;
+                $this->db->insert('pembayaran_pendaftar', $pembayaran_data);
+            }
+
+            // Simpan / Update Checklist Persyaratan Verval
+            $syarat_input = $this->input->post('syarat');
+            if ($nom_reg_fix == 0) {
+                $cek_master_reg = $this->db->like('nama_persyaratan', 'Registrasi')->get('master_persyaratan')->row();
+                if ($cek_master_reg) {
+                    $syarat_input[$cek_master_reg->id_persyaratan] = 'Belum';
+                }
+            }
+
+            if (!empty($syarat_input)) {
+                foreach ($syarat_input as $id_syarat => $status_val) {
+                    $cek = $this->db->get_where('pendaftar_persyaratan', [
+                        'id_pendaftar'   => $id,
+                        'id_persyaratan' => $id_syarat
+                    ])->row();
+
+                    if ($cek) {
+                        $this->db->where('id', $cek->id);
+                        $this->db->update('pendaftar_persyaratan', ['status' => $status_val]);
+                    } else {
+                        $this->db->insert('pendaftar_persyaratan', [
+                            'id_pendaftar'   => $id,
+                            'id_persyaratan' => $id_syarat,
+                            'status'         => $status_val
+                        ]);
+                    }
+                }
+            }
+
+            $this->session->set_flashdata('toast', ['type' => 'success', 'message' => 'Data pembayaran berhasil diperbarui oleh Bendahara!']);
+            redirect('pendaftar/edit/' . $id);
+            return; // Hentikan eksekusi agar kode di bawahnya tidak berjalan untuk bendahara
+        }
+
+        // =========================================================================
+        // 2. CEK NIK GANDA (Hanya untuk Administrator & Sekretaris)
+        // =========================================================================
         $nik = $this->input->post('nik', true);
-        $id  = $this->input->post('id_pendaftar', true);
-        $nik = $this->input->post('nik', true);
+        if (empty(trim($nik))) {
+            $nik = NULL;
+        }
 
-        // 1. Cek NIK Ganda
-        $this->db->where('nik', $nik);
-        $this->db->where('id_pendaftar !=', $id);
-        $cek_nik = $this->db->get('pendaftar')->row();
+        if ($nik !== NULL) {
+            $this->db->where('nik', $nik);
+            $this->db->where('id_pendaftar !=', $id);
+            $cek_nik = $this->db->get('pendaftar')->row();
 
-        if ($cek_nik) {
-            $this->session->set_flashdata('toast', [
-                'type' => 'error',
-                'message' => 'NIK sudah dipakai orang lain!'
-            ]);
+            if ($cek_nik) {
+                $this->session->set_flashdata('toast', [
+                    'type' => 'error',
+                    'message' => 'NIK sudah dipakai oleh pendaftar lain!'
+                ]);
+                redirect('pendaftar/edit/' . $id);
+                return;
+            }
+        }
+
+        // =========================================================================
+        // 3. JIKA PERANNYA SEKRETARIS (Bisa isi semua biodata, KECUALI pembayaran)
+        // =========================================================================
+        if ($role == 'sekretaris') {
+            $data_biodata = [
+                'nama_lengkap'         => strtoupper($this->input->post('nama_lengkap', true)),
+                'tempat_lahir'         => $this->input->post('tempat_lahir', true),
+                'tgl_lahir'            => $this->input->post('tgl_lahir', true),
+                'jenis_kelamin'        => $this->input->post('jenis_kelamin', true),
+                'jalan'                => $this->input->post('jalan', true),
+                'dusun'                => $this->input->post('dusun', true),
+                'rt_rw'                => $this->input->post('rt_rw', true),
+                'desa'                 => $this->input->post('desa', true),
+                'kecamatan'            => $this->input->post('kecamatan', true),
+                'kabupaten'            => $this->input->post('kabupaten', true),
+                'agama'                => $this->input->post('agama', true),
+                'no_kk'                => $this->input->post('no_kk', true),
+                'nik'                  => $nik,
+                'no_hp'                => $this->input->post('no_hp', true),
+                'id_jurusan'           => $this->input->post('id_jurusan', true),
+                'id_sekolah'           => $this->input->post('id_sekolah', true),
+                'nama_ayah'            => $this->input->post('nama_ayah', true),
+                'status_ayah'          => $this->input->post('status_ayah', true),
+                'pekerjaan_ayah'       => $this->input->post('pekerjaan_ayah', true),
+                'alamat_ayah'          => $this->input->post('alamat_ayah', true),
+                'no_hp_ayah'           => $this->input->post('no_hp_ayah', true),
+                'nama_ibu'             => $this->input->post('nama_ibu', true),
+                'status_ibu'           => $this->input->post('status_ibu', true),
+                'pekerjaan_ibu'        => $this->input->post('pekerjaan_ibu', true),
+                'alamat_ibu'           => $this->input->post('alamat_ibu', true),
+                'no_hp_ibu'            => $this->input->post('no_hp_ibu', true),
+                'nama_wali'            => $this->input->post('nama_wali', true),
+                'pekerjaan_wali'       => $this->input->post('pekerjaan_wali', true),
+                'alamat_wali'          => $this->input->post('alamat_wali', true),
+                'no_hp_wali'           => $this->input->post('no_hp_wali', true),
+                'status_hubungan_wali' => $this->input->post('status_hubungan_wali', true),
+                'marketing'            => $this->input->post('marketing', true),
+                'verval'               => $this->input->post('verval', true),
+                'catatan_verval'       => $this->input->post('catatan_verval', true)
+            ];
+
+            // Update data utama pendaftar saja (Pembayaran diabaikan untuk Sekretaris)
+            $this->Pendaftar_model->update($id, $data_biodata);
+
+            $this->session->set_flashdata('toast', ['type' => 'success', 'message' => 'Data biodata pendaftar berhasil diperbarui oleh Sekretaris!']);
             redirect('pendaftar/edit/' . $id);
             return;
         }
 
-        // 2. Olah & Bersihkan Nominal Pembayaran Registrasi
+        // =========================================================================
+        // 4. JIKA PERANNYA ADMINISTRATOR (Bisa segalanya: Biodata + Pembayaran + Syarat)
+        // =========================================================================
         $nominal_reg = str_replace(['Rp', '.', ' '], '', $this->input->post('nominal_reg'));
+        $nom_reg_fix = (empty($nominal_reg) || $nominal_reg == 0) ? 0 : $nominal_reg;
+        $tgl_reg_fix = ($nom_reg_fix == 0) ? NULL : ($this->input->post('tgl_reg') ?: NULL);
+        $jam_input   = $this->input->post('jam_reg');
+        $jam_reg_fix = ($nom_reg_fix == 0) ? '00:00:00' : ((!empty($jam_input) && $jam_input != '00:00') ? date('H:i:s', strtotime($jam_input)) : date('H:i:s'));
 
-        // Jika nominal registrasi dikosongkan atau bernilai 0 (Dibatalkan)
-        if (empty($nominal_reg) || $nominal_reg == 0) {
-            $nom_reg_fix = 0;
-            $tgl_reg_fix = NULL;
-            $jam_reg_fix = '00:00:00';
-        } else {
-            // Ambil dari input atau gunakan data yang ada jika valid
-            $nom_reg_fix = $nominal_reg;
-            $tgl_reg_fix = $this->input->post('tgl_reg') ?: NULL;
-            $jam_input   = $this->input->post('jam_reg');
-            $jam_reg_fix = (!empty($jam_input) && $jam_input != '00:00') ? date('H:i:s', strtotime($jam_input)) : date('H:i:s');
-        }
-
-        // Olah Nominal Daftar Ulang
         $nominal_du = str_replace(['Rp', '.', ' '], '', $this->input->post('nominal_du'));
-        if (empty($nominal_du) || $nominal_du == 0) {
-            $nom_du_fix = 0;
-            $tgl_du_fix = NULL;
-            $jam_du_fix = '00:00:00';
-        } else {
-            $nom_du_fix = $nominal_du;
-            $tgl_du_fix = $this->input->post('tgl_du') ?: NULL;
-            $jam_input   = $this->input->post('jam_du');
-            $jam_du_fix = (!empty($jam_input) && $jam_input != '00:00') ? date('H:i:s', strtotime($jam_input)) : date('H:i:s');
-        }
+        $nom_du_fix = (empty($nominal_du) || $nominal_du == 0) ? 0 : $nominal_du;
+        $tgl_du_fix = ($nom_du_fix == 0) ? NULL : ($this->input->post('tgl_du') ?: NULL);
+        $jam_input_du = $this->input->post('jam_du');
+        $jam_du_fix = ($nom_du_fix == 0) ? '00:00:00' : ((!empty($jam_input_du) && $jam_input_du != '00:00') ? date('H:i:s', strtotime($jam_input_du)) : date('H:i:s'));
 
-        // 3. Data untuk tabel utama 'pendaftar'
-        $data = [
+        $data_biodata = [
             'nama_lengkap'         => strtoupper($this->input->post('nama_lengkap', true)),
             'tempat_lahir'         => $this->input->post('tempat_lahir', true),
             'tgl_lahir'            => $this->input->post('tgl_lahir', true),
@@ -326,15 +442,15 @@ class Pendaftar extends MY_Controller
             'alamat_wali'          => $this->input->post('alamat_wali', true),
             'no_hp_wali'           => $this->input->post('no_hp_wali', true),
             'status_hubungan_wali' => $this->input->post('status_hubungan_wali', true),
-            'marketing'            => $this->input->post('marketing', true), // <-- TAMBAHKAN INI
+            'marketing'            => $this->input->post('marketing', true),
             'verval'               => $this->input->post('verval', true),
             'catatan_verval'       => $this->input->post('catatan_verval', true)
         ];
 
-        // Update tabel utama 'pendaftar'
-        $this->Pendaftar_model->update($id, $data);
+        // Update data utama pendaftar
+        $this->Pendaftar_model->update($id, $data_biodata);
 
-        // 4. Simpan / Update Data Pembayaran
+        // Update data pembayaran admin
         $pembayaran_data = [
             'nominal_reg'  => $nom_reg_fix,
             'tgl_reg'      => $tgl_reg_fix,
@@ -354,10 +470,8 @@ class Pendaftar extends MY_Controller
             $this->db->insert('pembayaran_pendaftar', $pembayaran_data);
         }
 
-        // 5. Simpan / Update Checklist Persyaratan Verval
-        $syarat_input = $this->input->post('syarat'); // Array [id_persyaratan => status]
-
-        // JIKA PEMBAYARAN REGISTRASI DI-RESET KE 0, PAKSA STATUS SYARAT REGISTRASI MENJADI 'Belum'
+        // Update Checklist Persyaratan untuk Admin
+        $syarat_input = $this->input->post('syarat');
         if ($nom_reg_fix == 0) {
             $cek_master_reg = $this->db->like('nama_persyaratan', 'Registrasi')->get('master_persyaratan')->row();
             if ($cek_master_reg) {
@@ -385,10 +499,10 @@ class Pendaftar extends MY_Controller
             }
         }
 
-        // 6. Set Flashdata Toast & Redirect
-        $this->session->set_flashdata('toast', ['type' => 'success', 'message' => 'Data pendaftar & kelengkapan berkas berhasil diperbarui']);
+        $this->session->set_flashdata('toast', ['type' => 'success', 'message' => 'Semua data pendaftar berhasil diperbarui oleh Administrator!']);
         redirect('pendaftar/edit/' . $id);
     }
+
 
     public function hapus($id)
     {

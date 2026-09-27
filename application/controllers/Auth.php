@@ -23,13 +23,8 @@ class Auth extends CI_Controller
         $username = $this->input->post('username', true);
         $password = $this->input->post('password', true);
 
-        // Cari berdasarkan username
+        // Cari berdasarkan username saja
         $user = $this->db->get_where('users', ['username' => $username])->row();
-
-        // === [PERUBAHAN] Cadangan jika pengguna login menggunakan Email ===
-        if (!$user) {
-            $user = $this->db->get_where('users', ['email' => $username])->row();
-        }
 
         if ($user) {
             $is_password_valid = false;
@@ -53,21 +48,19 @@ class Auth extends CI_Controller
                     'id_user'   => $user->id_user,
                     'nama'      => $user->nama ?? 'Administrator',
                     'username'  => $user->username,
-                    'peran'     => $user->peran ?? 'administrator', // <-- Menggunakan 'peran'
+                    'peran'     => $user->peran ?? 'administrator',
                     'logged_in' => TRUE
                 ];
                 $this->session->set_userdata($session_data);
-                $this->session->set_userdata($session_data);
 
-                // === [PERUBAHAN] Menambahkan toast notifikasi berhasil login ===
+                // Notifikasi berhasil login
                 $this->session->set_flashdata('toast', [
                     'type' => 'success',
                     'message' => 'Selamat datang kembali, ' . ($user->nama ?? 'Admin') . '! Anda berhasil login.'
-                ]);
-
+                ]); // <-- Perhatikan penambahan kurung tutup dan titik koma ini
                 redirect('beranda');
             } else {
-                // === [PERUBAHAN] Pesan error khusus jika password salah ===
+                // Pesan error khusus jika password salah
                 $this->session->set_flashdata('toast', [
                     'type' => 'error',
                     'message' => 'Kata sandi yang Anda masukkan salah!'
@@ -75,10 +68,10 @@ class Auth extends CI_Controller
                 redirect('auth');
             }
         } else {
-            // === [PERUBAHAN] Pesan error khusus jika akun tidak ditemukan ===
+            // Pesan error khusus jika username tidak terdaftar
             $this->session->set_flashdata('toast', [
                 'type' => 'error',
-                'message' => 'Username atau Email tidak terdaftar dalam sistem!'
+                'message' => 'Username tidak terdaftar dalam sistem!'
             ]);
             redirect('auth');
         }

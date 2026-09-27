@@ -171,8 +171,9 @@
                         </div>
 
                         <!-- TAB 3: DATA ORANG TUA / WALI -->
+                        <!-- TAB 3: DATA ORANG TUA / WALI -->
                         <div class="tab-pane fade" id="ortu" role="tabpanel">
-                            <fieldset <?= (in_array(strtolower(trim($this->session->userdata('peran'))), ['ketua_spmb', 'bendahara'])) ? 'disabled style="pointer-events: none; opacity: 0.8;"' : ''; ?>>
+                            <fieldset <?= (strtolower(trim($this->session->userdata('peran'))) == 'bendahara') ? 'disabled style="pointer-events: none; opacity: 0.8;"' : ''; ?>>
                                 <!-- DATA ORANG TUA KANDUNG -->
                                 <div class="bg-success text-white px-3 py-1 fw-bold rounded-1 mb-3 style-header d-inline-block" style="background-color: #15803d !important;">
                                     DATA ORANG TUA KANDUNG

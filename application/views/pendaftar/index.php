@@ -103,9 +103,16 @@
 
 
                                     <!-- Tombol Edit -->
-                                    <a href="<?= base_url('pendaftar/edit/' . $p->id_pendaftar); ?>" class="btn btn-warning btn-sm text-white px-2 py-1" title="Edit Data">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
+                                    <?php
+                                    $peran_login = strtolower(trim($this->session->userdata('peran')));
+                                    // Tombol edit HANYA MUNCUL jika peran BUKAN ketua_spmb
+                                    if ($peran_login != 'ketua_spmb'):
+                                    ?>
+                                        <!-- Tombol Edit -->
+                                        <a href="<?= base_url('pendaftar/edit/' . $p->id_pendaftar); ?>" class="btn btn-warning btn-sm text-white px-2 py-1" title="Edit Data">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                    <?php endif; ?>
 
                                     <!-- Tombol Print -->
                                     <a href="<?= base_url('pendaftar/cetak/' . $p->id_pendaftar); ?>" target="_blank" class="btn btn-info btn-sm text-white px-2 py-1" title="Cetak Bukti">
@@ -113,9 +120,16 @@
                                     </a>
 
                                     <!-- Tombol Hapus -->
-                                    <button class="btn btn-danger btn-sm px-2 py-1" onclick="hapusPendaftar(<?= $p->id_pendaftar; ?>)" title="Hapus Data">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+                                    <?php
+                                    $peran_login = strtolower(trim($this->session->userdata('peran')));
+                                    // Tombol hapus HANYA MUNCUL jika BUKAN bendahara dan BUKAN ketua
+                                    if (!in_array($peran_login, ['bendahara', 'ketua_spmb'])):
+                                    ?>
+                                        <!-- Tombol Hapus -->
+                                        <button class="btn btn-danger btn-sm px-2 py-1" onclick="hapusPendaftar(<?= $p->id_pendaftar; ?>)" title="Hapus Data">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                     <?php endforeach;
